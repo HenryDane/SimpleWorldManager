@@ -1,8 +1,17 @@
 name: SimpleWorldManager
-version: 0.0.45
+version: 0.0.7
 main: com.aglareb.simpleworldmanager.SimpleWorldManager
 description: A simple system for adding and deleting worlds
 author: aglareb
 website: https://aglareb.com/SimpleWorldManager.html
 api-version: 1.20
 load: STARTUP
+commands:
+    world:
+        description: Main command for using the SimpleWorldManager plugin.
+        usage: /<command> ...
+        permission: simpleworldmanager.world
+    wtp:
+        description: Teleport to a world
+        usage: /<command> <world> [name] [x, y, z]
+        permission: simpleworldmanager.wtp

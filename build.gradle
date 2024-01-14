@@ -30,6 +30,12 @@ java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(17))
 }
 
+javadoc {
+    options {
+        links 'https://hub.spigotmc.org/javadocs/spigot/index.html'
+    }
+}
+
 tasks.jar {
     manifest {
         archiveBaseName.set("simpleworldmanager") 
