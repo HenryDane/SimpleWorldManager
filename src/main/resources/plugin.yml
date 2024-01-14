@@ -1,5 +1,5 @@
 name: SimpleWorldManager
-version: 0.0.7
+version: 0.0.15
 main: com.aglareb.simpleworldmanager.SimpleWorldManager
 description: A simple system for adding and deleting worlds
 author: aglareb

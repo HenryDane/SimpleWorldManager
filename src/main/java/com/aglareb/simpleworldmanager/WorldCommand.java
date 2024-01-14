@@ -1,6 +1,12 @@
 package com.aglareb.simpleworldmanager;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.logging.Level;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -10,6 +16,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.codehaus.plexus.util.FileUtils;
 
 /**
  *
@@ -17,9 +24,13 @@ import org.bukkit.entity.Player;
  */
 public class WorldCommand implements CommandExecutor {
     private SimpleWorldManager plugin;
+    private Map<UUID, String> deleteTable;
+    private String consoleDelete;
     
     public WorldCommand(SimpleWorldManager plugin) {
         this.plugin = plugin;
+        deleteTable = new HashMap<UUID, String>();
+        consoleDelete = null;
     }
     
     @Override
@@ -32,9 +43,20 @@ public class WorldCommand implements CommandExecutor {
             }
             return true;
         } else if (args[0].equals("delete")) {
-            return handleWorldDelete(sender, command, label, args);
+            if (!handleWorldDelete(sender, command, label, args)) {
+                sender.sendMessage(ChatColor.RED + "Useage: /world delete <name>" + ChatColor.RESET);
+            }
+            return true;
         } else if (args[0].equals("confirm")) {
-            return handleWorldConfirm(sender, command, label, args);
+            if (!handleWorldConfirm(sender, command, label, args)) {
+                sender.sendMessage(ChatColor.RED + "Useage: /world confirm <name>" + ChatColor.RESET);
+            }
+            return true;
+        } else if (args[0].equals("cancel")) {
+            if (!handleWorldCancel(sender, command, label, args)) {
+                sender.sendMessage(ChatColor.RED + "Useage: /world cancel" + ChatColor.RESET);
+            }
+            return true;
         } else if (args[0].equals("list")) {
             if (!handleWorldList(sender, command, label, args)) {
                 sender.sendMessage(ChatColor.RED + "Useage: /world list" + ChatColor.RESET);
@@ -50,7 +72,7 @@ public class WorldCommand implements CommandExecutor {
             return true;
         } 
         
-        sender.sendMessage(ChatColor.RED + "Valid subcommands: create, delete, confirm, list, tp." + ChatColor.RESET);
+        sender.sendMessage(ChatColor.RED + "Valid subcommands: create, delete, confirm, cancel, list, tp." + ChatColor.RESET);
         return true;        
     }
     
@@ -69,7 +91,7 @@ public class WorldCommand implements CommandExecutor {
         }
         
         if (sender.getServer().getWorld(args[1]) != null) {
-            sender.sendMessage(ChatColor.RED + "World " + args[1] + "already exists." + ChatColor.RESET);
+            sender.sendMessage(ChatColor.RED + "World " + args[1] + " already exists." + ChatColor.RESET);
             return true;
         }
         
@@ -88,17 +110,118 @@ public class WorldCommand implements CommandExecutor {
         
         sender.getServer().createWorld(wc);
         
+        this.plugin.addWorld(args[1]);
+        
         sender.sendMessage(ChatColor.GREEN + "Created world: " + args[1] + ChatColor.RESET);
         
         return true;
     }
     
     public boolean handleWorldDelete(CommandSender sender, Command command, String label, String[] args) {
-        return false;
+        if (args.length != 2) return false;
+        
+        // world delete <name>
+        World world = this.plugin.getServer().getWorld(args[1]);
+        if (world == null) {
+            sender.sendMessage(ChatColor.RED + "World " + args[1] + " does not exist." + ChatColor.RESET);
+            return true;
+        }
+        
+        if (sender instanceof Player) {
+            Player p = (Player) sender;
+            if (deleteTable.containsKey(p.getUniqueId())) {
+                sender.sendMessage(ChatColor.RED + "You were already trying to delete something. Previous delete cancelled." + ChatColor.RESET);
+                deleteTable.remove(p.getUniqueId());
+            } else {
+                deleteTable.put(p.getUniqueId(), args[1]);
+                sender.sendMessage(ChatColor.GREEN + "Type " + ChatColor.YELLOW + "/world confirm " + args[1] + ChatColor.GREEN + 
+                        " to confirm this operation or " + ChatColor.YELLOW + "/world cancel" + ChatColor.GREEN + " to cancel." + ChatColor.RESET);
+            }
+        } else {
+            if (consoleDelete != null) {
+                sender.sendMessage(ChatColor.RED + "You were already trying to delete something. Previous delete cancelled." + ChatColor.RESET);
+                consoleDelete = null;
+            } else {
+                consoleDelete = args[1];
+                sender.sendMessage(ChatColor.GREEN + "Type " + ChatColor.YELLOW + "/world confirm " + args[1] + ChatColor.GREEN + 
+                        " to confirm this operation or " + ChatColor.YELLOW + "/world cancel" + ChatColor.GREEN + " to cancel." + ChatColor.RESET);
+            }
+        }
+        
+        return true;
     }
     
     public boolean handleWorldConfirm(CommandSender sender, Command command, String label, String[] args) {
-        return false;
+        if (args.length != 2) return false;
+        
+        // world confirm <name>
+        if (sender instanceof Player) {
+            Player p = (Player) sender;
+            if (deleteTable.containsKey(p.getUniqueId())) {
+                if (args[1].strip().equals(deleteTable.get(p.getUniqueId()))) {
+                    sender.sendMessage(ChatColor.GREEN + "Deleting world " + args[1] + ChatColor.RESET);
+                    
+                    if (deleteWorldByName(args[1])) {
+                        sender.sendMessage(ChatColor.GREEN + "Successfully deleted world " + args[1] + ChatColor.RESET);
+                    } else {
+                        sender.sendMessage(ChatColor.RED + "Failed to delete world " + args[1] + ChatColor.RESET);
+                    }
+                    
+                    deleteTable.remove(p.getUniqueId());
+                } else {
+                    sender.sendMessage(ChatColor.RED + args[1] + " does not match world name: " + deleteTable.get(p.getUniqueId()) + 
+                            ". Cancelling operation." + ChatColor.RESET);
+                    deleteTable.remove(p.getUniqueId());
+                }
+            } else {
+                sender.sendMessage(ChatColor.RED + "No operation available to confirm." + ChatColor.RESET);
+            }
+        } else {
+            if (consoleDelete == null) {
+                sender.sendMessage(ChatColor.RED + "No operation available to confirm." + ChatColor.RESET);
+            } else {
+                if (consoleDelete.equals(args[1].strip())) {
+                    sender.sendMessage(ChatColor.GREEN + "Deleting world " + args[1] + ChatColor.RESET);
+                    
+                    if (deleteWorldByName(args[1])) {
+                        sender.sendMessage(ChatColor.GREEN + "Successfully deleted world " + args[1] + ChatColor.RESET);
+                    } else {
+                        sender.sendMessage(ChatColor.RED + "Failed to delete world " + args[1] + ChatColor.RESET);
+                    }
+                    
+                    consoleDelete = null;
+                } else {
+                    sender.sendMessage(ChatColor.RED + args[1] + " does not match world name: " + consoleDelete + 
+                            ". Cancelling operation." + ChatColor.RESET);
+                    consoleDelete = null;
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    public boolean handleWorldCancel(CommandSender sender, Command command, String label, String[] args) {
+        if (args.length != 1) return false;
+        
+        if (sender instanceof Player) {
+            Player p = (Player) sender;
+            if (deleteTable.containsKey(p.getUniqueId())) {
+                deleteTable.remove(p.getUniqueId());
+                sender.sendMessage(ChatColor.GREEN + "Successfully cancelled operation." + ChatColor.RESET);
+            } else {
+                sender.sendMessage(ChatColor.RED + "No pending operation." + ChatColor.RESET);
+            }
+        } else {
+            if (consoleDelete != null) {
+                consoleDelete = null;
+                sender.sendMessage(ChatColor.GREEN + "Successfully cancelled operation." + ChatColor.RESET);
+            } else {
+                sender.sendMessage(ChatColor.RED + "No pending operation." + ChatColor.RESET);
+            }
+        }
+        
+        return true;
     }
     
     public boolean handleWorldList(CommandSender sender, Command command, String label, String[] args) {
@@ -192,6 +315,20 @@ public class WorldCommand implements CommandExecutor {
         p.teleport(l);
         
         sender.sendMessage(ChatColor.GREEN + "Teleported " + p.getName() + " to world " + w.getName() + ChatColor.RESET);
+        
+        return true;
+    }
+        
+    public boolean deleteWorldByName(String name) {
+        File dir = this.plugin.getServer().getWorld(name).getWorldFolder();
+        this.plugin.getServer().unloadWorld(name, true);
+        
+        try {
+            FileUtils.deleteDirectory(dir);
+        } catch (IOException ex) {
+            this.plugin.getLogger().log(Level.SEVERE, "Failed to delete world directory for world " + name);
+            return false;
+        }
         
         return true;
     }
